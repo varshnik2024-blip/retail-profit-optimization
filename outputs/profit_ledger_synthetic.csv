@@ -1,0 +1,7 @@
+module,result,evidence_grade
+Forecast accuracy,WAPE 0.148,MEASURED
+Forecast bias,+0.3% units,MEASURED
+Inventory cost,81.4% lower,REPLAYED
+Inventory fill rate,95.1% -> 99.5%,REPLAYED
+Markdown cash,+4.9% vs fixed,MODELLED
+Pricing profit,+19.9% (range +15.6% to +24.2%),MODELLED

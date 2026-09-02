@@ -1,0 +1,2 @@
+actual_units,predicted_units,unit_error_pct,wape,actual_profit,predicted_profit,profit_error_pct,scenario
+1570581.0,1602256.792,2.0168,0.2922,1081938.082,1082562.7122,0.0577,forecast_realisation

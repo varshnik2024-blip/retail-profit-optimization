@@ -1,0 +1,6 @@
+store_id,upc,week,actual_units,promoted,top_drivers_log_units
+23075,3700044982,147,3,True,roll_mean_13 -0.56; lag_1 -0.23; roll_mean_4 -0.14; display +0.11
+21227,7192100339,151,90,True,roll_mean_13 +0.94; lag_1 +0.34; feature +0.28; display +0.16
+23075,1111038078,154,3,True,price_vs_hist -0.37; roll_mean_13 -0.30; lag_1 -0.22; display +0.09
+11761,7027316204,136,11,False,roll_mean_13 +0.24; roll_mean_4 +0.09; price_vs_hist -0.09; mfr_code +0.06
+387,88491212971,145,21,False,roll_mean_13 +0.39; lag_1 +0.13; roll_mean_4 +0.11; price_vs_hist +0.07

@@ -1,0 +1,2 @@
+rows_all,rows_non_promo,n_near,n_far,promo_rate_near,promo_rate_far,raw_near,raw_far,coef,se,t,pct_effect
+86497,64485,26950,6909,0.0,0.0,17.9313,9.321,0.0156,0.015,1.0409,1.5732

@@ -1,0 +1,4 @@
+treatment,did_coef,did_se,lift_pct,naive_coef,placebo_coef
+feature,0.39,0.0016,47.7053,0.979,0.0008
+display,0.5616,0.0017,75.3557,1.1288,-0.0046
+tpr_only,0.2275,0.0017,25.5447,0.7132,0.0

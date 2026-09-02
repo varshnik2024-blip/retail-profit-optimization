@@ -1,0 +1,24 @@
+venv/
+__pycache__/
+*.pyc
+
+# Data: 393 MB total, three files over GitHub's 100 MB hard limit.
+# The dunnhumby file is also licensed - do not redistribute it.
+data/raw/
+data/processed/
+*.xlsx
+*.xls
+
+# LaTeX build artefacts
+paper/build/
+paper/*.aux
+paper/*.log
+paper/*.out
+paper/*.pdf
+
+.env
+*.key
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/

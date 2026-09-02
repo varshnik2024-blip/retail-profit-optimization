@@ -1,0 +1,5 @@
+price_quartile,products,mean_price,mean_change_pct,share_increased
+cheapest,15,2.6,6.44,80.0
+low,15,3.42,7.74,86.67
+high,15,4.49,10.0,100.0
+dearest,15,5.8,10.0,100.0

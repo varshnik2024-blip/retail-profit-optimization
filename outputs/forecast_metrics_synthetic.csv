@@ -1,0 +1,9 @@
+model,n,WAPE,MAE,RMSE,bias_pct,split
+naive (last week),91175,0.4559,14.8959,27.1223,2.5267,
+seasonal naive (52w),91175,0.4542,14.8384,27.1969,0.8744,
+moving avg 4w,91175,0.3996,13.0543,21.7024,6.2706,
+gradient boosting,91175,0.1512,4.9411,6.9478,0.6728,
+naive (last week),118519,0.467,16.5021,31.7461,-4.4776,test
+seasonal naive (52w),118519,0.4723,16.6919,32.2417,0.0455,test
+moving avg 4w,118519,0.3862,13.6473,26.4199,-10.7808,test
+gradient boosting (test),118519,0.148,5.2304,7.8695,0.314,test
