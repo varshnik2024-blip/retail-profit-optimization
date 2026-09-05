@@ -93,6 +93,16 @@ def product_table(source):
                      comp_hi=(Canon.PRICE, lambda s: s.quantile(0.95)))
                 .reset_index())
     products["comp_hi"] = products["comp_hi"] * 1.10
+
+    # Keep only what recompute_prices actually touches. The full held-out
+    # frame is ~8 MB on disk and several hundred MB once pandas widens the
+    # string columns, which does not fit the 1 GB container the app is
+    # deployed into. Everything below this line is display or arithmetic.
+    keep = [Canon.UPC, Canon.PRICE, Canon.UNITS, "elasticity"]
+    rows = rows[keep].copy()
+    rows[Canon.UPC] = rows[Canon.UPC].astype("int64")
+    for c in (Canon.PRICE, Canon.UNITS, "elasticity"):
+        rows[c] = rows[c].astype("float32")
     return rows, products
 
 
@@ -261,7 +271,7 @@ with tabs[0]:
     led = load("profit_ledger", source)
     if led is not None:
         st.subheader("Every claim, graded by its evidence")
-        st.dataframe(led, use_container_width=True, hide_index=True)
+        st.dataframe(led, width="stretch", hide_index=True)
         st.caption(
             "MEASURED both sides observed  ·  REPLAYED policy re-run on real "
             "demand  ·  OBSERVATIONAL real outcomes but not randomised  ·  "
@@ -299,7 +309,7 @@ with tabs[1]:
                              "current_price": "Now", "recommended_price": "Recommended",
                              "change_pct": "Change %", "profit_delta": "Profit change",
                              "binding": "Constraint"}))
-    st.dataframe(show.round(2), use_container_width=True, hide_index=True,
+    st.dataframe(show.round(2), width="stretch", hide_index=True,
                  height=340)
 
     exp = load("price_explanations", source)
@@ -325,7 +335,7 @@ with tabs[2]:
         st.caption("Lower is better. The three naive baselines are the point: "
                    "an accuracy figure quoted without them cannot be judged.")
         st.dataframe(t[["model", "WAPE", "MAE", "RMSE", "bias_pct"]].round(3),
-                     use_container_width=True, hide_index=True)
+                     width="stretch", hide_index=True)
 
     shp = load("shap_importance", source)
     if shp is not None:
@@ -358,7 +368,7 @@ with tabs[3]:
                      color=NAVY, height=280)
         c2.bar_chart(pol.set_index("policy")[["sell-through %"]],
                      color=AMBER, height=280)
-        st.dataframe(pol.round(1), use_container_width=True, hide_index=True)
+        st.dataframe(pol.round(1), width="stretch", hide_index=True)
         st.caption(
             "Objective is cash recovered, not margin: the stock is already "
             "bought, so its cost is sunk. The optimal ladder eases discount "
@@ -387,7 +397,7 @@ with tabs[4]:
         pol = pd.DataFrame(rows_)
         st.bar_chart(pol.set_index("policy")[["holding", "stockout"]],
                      height=300)
-        st.dataframe(pol.round(2), use_container_width=True, hide_index=True)
+        st.dataframe(pol.round(2), width="stretch", hide_index=True)
         st.caption(
             "Less stock and better service at the same time, because the "
             "forecast indicates when cover is needed rather than carrying it "
@@ -403,7 +413,7 @@ with tabs[5]:
     if cf is not None:
         st.markdown("**Pricing profit under different assumptions**")
         st.dataframe(cf[["scenario", "delta", "delta_pct"]].round(1),
-                     use_container_width=True, hide_index=True)
+                     width="stretch", hide_index=True)
         st.caption("The spread across these rows is the finding. A single "
                    "number would overstate what the data supports.")
 
