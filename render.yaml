@@ -1,0 +1,20 @@
+# Render Blueprint - deploys the Streamlit dashboard as a free web service.
+# In the Render dashboard: New > Blueprint, point it at this repository.
+services:
+  - type: web
+    name: retail-profit-optimization
+    runtime: python
+    plan: free
+    region: singapore
+    branch: main
+    buildCommand: pip install -r requirements.txt
+    # Render injects $PORT. Streamlit must bind 0.0.0.0, not localhost,
+    # or the health check never sees the container come up.
+    startCommand: >-
+      streamlit run app.py
+      --server.port $PORT
+      --server.address 0.0.0.0
+      --server.headless true
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.12.7"
