@@ -22,3 +22,5 @@ paper/*.pdf
 Thumbs.db
 .vscode/
 .idea/
+# generated figure renders (the paper keeps its own copies in paper/figures/)
+outputs/figures/

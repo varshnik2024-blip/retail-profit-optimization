@@ -9,7 +9,7 @@
 %  The main paper is EXACTLY 6 pages. The appendix listing that follows the
 %  references is intentionally outside that limit.
 %=============================================================================
-\documentclass[conference]{IEEEtran}
+\documentclass[conference,a4paper]{IEEEtran}
 \IEEEoverridecommandlockouts
 
 % T1 encoding is REQUIRED here. The default OT1 encoding has no glyph for the
@@ -80,36 +80,45 @@ Elasticity, Promotion Uplift,\\Markdown and Replenishment}
 % AUTHOR BLOCK
 % Confirm the campus city on line three if you are not at the Vellore campus.
 % ---------------------------------------------------------------------------
-\author{\IEEEauthorblockN{Varshni K}
-\IEEEauthorblockA{\textit{School of Computer Science and Engineering} \\
-\textit{Vellore Institute of Technology} \\
-Vellore, India \\
-varshni.k2024@vitstudent.ac.in}}
+\author{
+\IEEEauthorblockN{Varshni K\IEEEauthorrefmark{1},\quad
+                  Rowena Shalom S\IEEEauthorrefmark{2},\quad
+                  Thenmozhi V\IEEEauthorrefmark{3}}
+\IEEEauthorblockA{\textit{School of Computer Science and Engineering},
+\textit{Vellore Institute of Technology}\\
+Vellore, India\\[2pt]
+\IEEEauthorrefmark{1}24MID0039 \qquad
+\IEEEauthorrefmark{2}24MID0036 \qquad
+\IEEEauthorrefmark{3}24MID0023}
+}
 
 \maketitle
 
 %=============================================================================
 \begin{abstract}
-Retail analytics projects usually stop at prediction, reporting forecast
-accuracy but never showing that acting on the model would have earned money.
-This paper describes an end-to-end decision system built on 524{,}926
-store--week--product records from the dunnhumby \emph{Breakfast at the Frat}
-panel, covering 55 products across 77 stores over 156 weeks. Five estimation
-and decision modules are chained together: own-price elasticity estimated with
-a Hausman instrument and empirical-Bayes shrinkage; promotion uplift measured
-by two-way fixed-effects difference-in-differences; a gradient-boosted demand
-forecast with a smearing correction; constrained price optimisation; markdown
-scheduling by backward induction; and forecast-driven replenishment. Every
-estimator is validated twice, once against the real panel and once against a
-schema-identical synthetic replica in which the true elasticity and true
-promotional lift are known by construction. On that replica the naive
-promotion estimate is biased by $0.557$ in log-lift while the
-difference-in-differences estimate is biased by $0.010$. On the real data the
+Retail analytics usually stops at prediction: it reports forecast accuracy but
+never shows that acting on the model would have earned money. This paper
+describes an end-to-end decision system built on 524{,}926 store--week--product
+records from the dunnhumby \emph{Breakfast at the Frat} panel, covering 55
+products across 77 stores over 156 weeks. Own-price elasticity is estimated with a
+Hausman instrument and empirical-Bayes shrinkage, promotion uplift with two-way
+fixed-effects difference-in-differences, and demand with a smeared
+gradient-boosted model; these feed constrained pricing, markdown scheduling by
+backward induction, and forecast-driven replenishment. Every estimator is
+validated on the real panel and on a schema-identical synthetic replica whose
+elasticity and promotional lift are known by construction, where the naive
+promotion estimate is biased by $0.557$ in log-lift against $0.010$ for
+difference-in-differences. On the real data the
 share of products with economically impossible positive elasticity falls from
 $5.5\%$ to $0\%$, the forecast improves on the strongest naive baseline by
-$30.5\%$ in WAPE, markdown scheduling recovers $6.6\%$ more cash than a fixed
+$31.0\%$ in WAPE, markdown scheduling recovers $6.6\%$ more cash than a fixed
 discount ladder, and forecast-driven replenishment cuts inventory cost by
-$48.1\%$ while raising fill rate.
+$48.1\%$ while raising fill rate. Each result is published with a grade
+recording what was actually observed. Under that rule a modelled pricing gain of
+$21.0\%$ is kept apart from an observational check on the same decision that
+returns $+1.6\%$ and is inconclusive ($t=1.0$); before promoted weeks were
+excluded that check reported $+741\%$ at $t=129.5$, entirely an artefact of
+comparing full-price weeks against clearance.
 \end{abstract}
 
 \begin{IEEEkeywords}
@@ -121,103 +130,100 @@ inventory replenishment
 %=============================================================================
 \section{Introduction}
 
-A supermarket chain decides weekly, for every product in every store, what
+A supermarket chain decides every week, for every product in every store, what
 price to charge, whether to promote, how deep to discount ageing stock and how
-much to reorder. Each decision moves gross profit and depends on the others: a
-promotion changes demand, that changes the reorder quantity, and the discount
-driving the promotion consumes the margin the reorder was meant to earn.
+much to reorder. The decisions interact: a promotion changes demand, that changes
+the reorder quantity, and the discount driving it eats the margin the reorder was
+meant to earn. Most work here stops at prediction --- fit a demand model, report
+an accuracy figure, finish. But knowing that units rise when price falls does not
+say whether price should fall, and the quantities such systems rely on are biased
+in a known direction: retailers cut prices in weeks when they already expect
+strong demand and promote harder in stores that are already busy. On the panel
+used here a plain log--log regression returns a \emph{positive} own-price
+elasticity for $5.5\%$ of products, and a naive before-and-after comparison
+overstates an in-store display by more than a factor of two.
 
-Most work on this problem is organised around prediction: a demand model is
-fitted, an accuracy figure is reported, and the project ends. Two things are
-missing. First, prediction and decision are not the same task --- knowing that
-units rise when price falls says nothing about whether price should fall.
-Second, the quantities such systems rely on are biased in a known direction,
-because prices and promotions are not set at random.
-
-Retailers cut prices in weeks when they already expect strong demand, and
-promote harder in stores that are already busy, so price is correlated with the
-demand shock and least squares confounds the two. In the panel used here a
-plain log--log regression returns a \emph{positive} own-price elasticity for
-$5.5\%$ of products, implying that raising price sells more; a naive
-before-and-after comparison overstates an in-store display by over a factor of
-two.
-
-This paper describes a system built to avoid that failure mode. The
-contributions are:
+This paper describes a system built to avoid that failure. The contributions
+are:
 
 \begin{itemize}
 \item an elasticity estimator combining store fixed effects, a Hausman
-      instrument formed from the same product's price in other stores, and
-      empirical-Bayes shrinkage, which removes all economically impossible
-      estimates from the panel;
-\item a promotion-uplift model that separates the effect of the merchandising
-      mechanic from the effect of the accompanying price cut, with an explicit
-      parallel-trends placebo test;
-\item three decision modules --- constrained pricing, markdown scheduling by
-      backward induction, and forecast-driven replenishment --- each benchmarked
-      against the incumbent heuristic, and for inventory against a
-      perfect-foresight bound;
+      instrument and empirical-Bayes shrinkage, which removes every
+      economically impossible estimate from the panel;
+\item a promotion-uplift model separating the merchandising mechanic from the
+      price cut that accompanies it, with a parallel-trends placebo test;
+\item three decision modules --- constrained pricing, markdown by backward
+      induction and forecast-driven replenishment --- each benchmarked against
+      the incumbent heuristic, and inventory against a perfect-foresight bound;
 \item a validation design running every estimator on a schema-identical
-      synthetic replica with known parameters, so estimator quality is measured
-      rather than asserted.
+      synthetic replica with known parameters;
+\item an evidence-graded ledger labelling every headline result by what was
+      actually observed, which publishes the disagreement between the modelled
+      and observational estimates of the same pricing decision.
 \end{itemize}
 
-The last point makes the rest credible. On real data the true elasticity is
-unobservable, so internal consistency proves nothing; running identical code on
-data whose parameters were fixed in advance turns that into a measurement.
+The fourth makes the rest credible: on real data the true elasticity is
+unobservable, so internal consistency proves nothing, while identical code on
+data whose parameters were fixed in advance turns it into a measurement. The
+fifth decides what may then be claimed.
 
 %=============================================================================
 \section{Related Work}
 
-\subsection{Demand forecasting in retail}
+\subsection{Forecasting, elasticity and endogeneity}
 Gradient-boosted trees remain a strong default for the tabular, count-valued
-series retail produces \cite{friedman2001}. Recent work couples forecasting
-directly to inventory decisions rather than treating them separately
-\cite{yang2025}, the arrangement adopted here.
-
-\subsection{Price elasticity and endogeneity}
-That observed prices are endogenous to demand is long established. Nevo's
+series retail produces \cite{friedman2001}, and recent work couples forecasting
+directly to inventory decisions \cite{yang2025}, the arrangement adopted here.
+That observed prices are endogenous to demand is long established; Nevo's
 analysis of ready-to-eat cereal \cite{nevo2001} is directly relevant, both
 methodologically and because cereal is one of our four categories. The standard
 remedy is an instrument correlated with cost but not local demand, canonically
-the same product's price in other markets; strength is judged by the first-stage
-$F$ against a threshold of ten \cite{stock2005}. Where per-product estimates are
-noisy, empirical-Bayes shrinkage reduces total error \cite{efron1973}.
+the same product's price in other markets, with strength judged by the
+first-stage $F$ against a threshold of ten \cite{stock2005}. Where per-product
+estimates are noisy, empirical-Bayes shrinkage reduces total error
+\cite{efron1973}.
 
 \subsection{Promotion effect measurement}
-Separating what a promotion caused from what merely coincided with it is a
-causal-inference problem. Difference-in-differences with two-way fixed effects
-is the standard panel approach \cite{angrist2009}, resting on a parallel-trends
-assumption that should be tested rather than assumed \cite{bertrand2004}. Causal
-methods are increasingly used for marketing targeting \cite{lemmens2025}.
+Difference-in-differences with two-way fixed effects is the standard way to
+separate what a promotion caused from what merely coincided with it
+\cite{angrist2009}, resting on a parallel-trends assumption that should be tested
+rather than assumed \cite{bertrand2004}; causal methods are increasingly used for
+marketing targeting \cite{lemmens2025}.
 
 \subsection{Pricing, markdown and inventory decisions}
 The profit-maximising price under constant-elasticity demand follows the Lerner
-condition \cite{lerner1934}. Clearance with fixed stock and a deadline is a
-different problem, solved classically by dynamic programming
-\cite{gallego1994}. For replenishment, deep reinforcement learning
-has been found competitive rather than dominant against established heuristics
-\cite{gijsbrechts2022}, motivating our use of exact dynamic programming where
-the transition model is known. Unconstrained algorithmic pricing empirically
-raises margins in ways consistent with weakened competition \cite{assad2024},
-and autonomous agents can reach supra-competitive prices without explicit
-coordination \cite{fish2024}; both argue for hard guardrails. Explainability
-requirements are surveyed in \cite{debock2024}.
+condition \cite{lerner1934}, while clearance with fixed stock and a deadline is
+solved classically by dynamic programming \cite{gallego1994}. For replenishment,
+deep reinforcement learning is competitive rather than dominant against
+established heuristics \cite{gijsbrechts2022}, motivating exact dynamic
+programming where the transition model is known. Unconstrained algorithmic pricing
+raises margins in ways consistent with weakened competition \cite{assad2024}, and
+agents can reach supra-competitive prices without explicit coordination
+\cite{fish2024}; both argue for hard guardrails. Explainability requirements are
+surveyed in \cite{debock2024}.
 
 \subsection{Summary and research gap}
-Each component is individually well studied. What is uncommon is a single
-pipeline in which causal estimates feed decision modules, decisions are scored
-on held-out weeks against the incumbent heuristic, and the estimators are
-themselves validated against known ground truth. That combination is the gap
-addressed here.
+Validating causal estimators on synthetic data with known parameters is
+established practice rather than something we introduce: Schultz \emph{et al.} do
+so before turning to real data \cite{schultz2024}, and Poinsot \emph{et al.} argue
+such experiments are necessary for causal machine learning to be trusted
+\cite{poinsot2025}. We do not claim that design as new. What we did not find is a
+retail pipeline in which the causal estimates feed every downstream decision, all
+decisions are scored on one shared held-out split against the heuristic each would
+replace, and every result carries a grade recording what was actually observed ---
+including where the modelled and observational estimates of the same decision
+disagree.
 
 %=============================================================================
 \begin{figure*}[!t]
 \centering
 \includegraphics[width=\textwidth]{fig1_architecture.pdf}
-\caption{System architecture. Estimation feeds decision, which feeds
-evaluation on held-out weeks. The dashed envelope is the synthetic replica on
-which the identical pipeline is run against known ground truth.}
+\caption{System architecture. Estimation feeds decision; decision feeds an
+assurance layer that explains each recommendation, audits the guardrails and
+grades every result by the evidence behind it; and delivery recomputes the
+recommendations live from the stated assumptions. The dashed envelope is the
+synthetic replica on which the identical pipeline is run against known ground
+truth.}
 \label{fig:arch}
 \end{figure*}
 
@@ -225,71 +231,46 @@ which the identical pipeline is run against known ground truth.}
 
 \subsection{Problem formulation}
 Let $q_{ist}$ be units of product $i$ sold in store $s$ in week $t$ at shelf
-price $p_{ist}$ against reference price $b_{ist}$, with binary indicators
-$F_{ist}$ (mailer), $D_{ist}$ (display) and $R_{ist}$ (temporary price
-reduction), and unit cost $c_i$. The objective is gross profit $q(p-c)$, except
-during clearance where it is cash recovered, the stock being already purchased.
-Fig.~\ref{fig:arch} shows how the modules connect.
+price $p_{ist}$ against reference price $b_{ist}$, with indicators $F_{ist}$
+(mailer), $D_{ist}$ (display), $R_{ist}$ (temporary price reduction) and unit cost
+$c_i$. The objective is gross profit $q(p-c)$, except in clearance where it is
+cash recovered, the stock being already bought (Fig.~\ref{fig:arch}).
 
 \subsection{Dataset and preprocessing}
 The dunnhumby \emph{Breakfast at the Frat} panel \cite{dunnhumby} covers 156
 weeks from January 2009 to December 2011 across cold cereal, frozen pizza, bag
 snacks and oral hygiene. It is unusual among public retail datasets in reporting
-shelf and reference price as separate fields, making discount depth directly
-observable, and in carrying three merchandising flags rather than one.
+shelf and reference price separately, making discount depth directly observable,
+and in carrying three merchandising flags rather than one.
 
 Loading normalises the workbook to a fixed column contract and repairs
-recoverable defects: 23 rows with null keys and one with non-positive units were
-dropped, 6{,}232 rows whose reference price fell below shelf price were reset,
-and two implying a discount deeper than $90\%$ were clipped
-(Table~\ref{tab:data}).
-
-Unit cost is absent, as no retailer publishes it; it is derived from a
-per-category gross-margin assumption, and every dependent conclusion is
-recomputed across a $\pm 5$ percentage-point band in
-Section~\ref{sec:pricing}. Splits are strictly temporal --- weeks 1--110 train,
-111--130 validation, 131--156 held out for a single final evaluation --- since a
-random split would let later weeks inform earlier ones.
-
-\begin{table}[!t]
-\caption{Panel characteristics after cleaning}
-\label{tab:data}
-\centering
-\footnotesize
-\begin{tabular}{lr}
-\toprule
-Property & Value \\
-\midrule
-Store--week--product records & 524{,}926 \\
-Stores & 77 \\
-Products (UPC) & 55 \\
-Weeks & 156 \\
-Period & 2009-01-14 to 2012-01-04 \\
-Records under any promotion & $28.5\%$ \\
-Mean discount when promoted & $20.3\%$ \\
-Median within-product price s.d. & $0.379$ \\
-Train / validation / test rows & 368{,}410 / 70{,}010 / 86{,}506 \\
-\bottomrule
-\end{tabular}
-\end{table}
+recoverable defects: 24 unusable rows were dropped, 6{,}232 whose reference price
+fell below shelf price were reset, and two implying a discount deeper than $90\%$
+were clipped. What remains is $524{,}926$ store--week--product records over 77
+stores and 55 products, of which $28.5\%$ sit under some promotion at a mean
+discount of $20.3\%$, with a median within-product price standard deviation of
+$0.379$. Unit cost is absent, as no retailer publishes
+it, so it is derived from a per-category gross-margin assumption and every
+dependent conclusion is recomputed across a $\pm 5$ percentage-point band. Splits
+are strictly temporal --- weeks 1--110 train ($368{,}410$ rows), 111--130
+validation ($70{,}010$), 131--156 held out ($86{,}506$) for one final evaluation
+--- since a random split would let later weeks inform earlier ones.
 
 \subsection{Elasticity estimation}
 Demand is constant-elasticity, so in logs $\varepsilon_i$ is the coefficient on
-log relative price. Three specifications are estimated per product. The first
-regresses $\log q$ on $\log(p/b)$. The second adds store fixed effects, the
-merchandising indicators, two seasonal harmonics and a linear trend. The third
-addresses the remaining endogeneity, instrumenting own price by the
-leave-one-out mean log price of the same product in \emph{other} stores in the
-same week,
+log relative price. Three specifications are estimated per product: $\log q$ on
+$\log(p/b)$; the same plus store fixed effects, merchandising indicators, two
+seasonal harmonics and a trend; and a third instrumenting own price with the
+leave-one-out mean log price of the same product in \emph{other} stores that
+week,
 \begin{equation}
 z_{ist}=\frac{1}{|S|-1}\sum_{s'\neq s}\log p_{is't}.
 \label{eq:iv}
 \end{equation}
-The identifying argument is that prices elsewhere move with shared supplier and
-commodity cost shocks but not with the demand shock local to store $s$.
-Two-stage least squares is applied within the fixed-effects transformation, and
-reported only where the first-stage $F$ exceeds ten. Estimates are then shrunk
-toward their category value,
+Prices elsewhere move with shared supplier and commodity cost shocks but not with
+the demand shock local to store $s$. Two-stage least squares is applied within the
+fixed-effects transformation and reported only where the first-stage $F$ exceeds
+ten. Estimates are then shrunk toward their category value,
 \begin{equation}
 \tilde\varepsilon_i = w_i\,\hat\varepsilon_i + (1-w_i)\,\bar\varepsilon_{c(i)},
 \qquad
@@ -298,8 +279,8 @@ w_i=\frac{\tau^2}{\tau^2+\sigma_i^2},
 \end{equation}
 with $\sigma_i$ the standard error of $\hat\varepsilon_i$ and $\tau^2$ the
 between-product variance within the category, estimated robustly from the median
-absolute deviation. The weight is adaptive: abundant data gives small
-$\sigma_i$, so $w_i\to 1$ and the estimate is left alone.
+absolute deviation. Abundant data gives small $\sigma_i$, so $w_i\to 1$ and the
+estimate is left alone.
 
 \subsection{Causal promotion uplift}
 The lift attributable to each merchandising mechanic is estimated by
@@ -313,36 +294,31 @@ difference-in-differences with two-way fixed effects,
 \label{eq:did}
 \end{equation}
 where $\alpha_{is}$ absorbs everything permanent about a product in a store and
-$\delta_t$ everything common to a week; within a week, stores not running a
-display are controls for those that are.
-
-The price term is essential. A display is normally accompanied by a discount,
-and without $\gamma$ the display coefficient would absorb the price effect,
-making mechanics incomparable. Validity is tested with a placebo: each
-indicator is shifted two weeks earlier within its store--product series and the
-model re-estimated. A substantial coefficient on an event that has not yet
-occurred would indicate pre-existing divergence.
+$\delta_t$ everything common to a week, so stores not running a display act as
+controls for those that are. The price term is essential: a display is normally
+accompanied by a discount, so without $\gamma$ the display coefficient would
+absorb the price effect and the mechanics would not be comparable. Validity is
+tested with a placebo, shifting each indicator two weeks earlier within its
+store--product series; a substantial coefficient on an event that has not yet
+happened would signal pre-existing divergence.
 
 \subsection{Demand forecasting}
 Weekly units are forecast with gradient-boosted trees on lagged demand, rolling
-means, seasonal harmonics, relative price and the merchandising flags. Next
-week's price and promotion calendar are legitimate features, since retailers
-commit to them in advance.
-
-The model is fitted on $\log(1+q)$, as retail demand is multiplicative and
-right-skewed. Exponentiating a log-scale fit under-predicts, because the
-expectation of a convex transform exceeds the transform of the expectation; the
-uncorrected model showed a $-5.1\%$ bias, removed by a Duan smearing factor
-\cite{duan1983}. Accuracy is reported as weighted absolute percentage error,
-which unlike MAPE is not dominated by slow movers.
-
-A second counterfactual forecast sets all promotion flags to zero and price to
-reference. This baseline is what the pricing and markdown modules optimise
-around, preventing promotional inflation being mistaken for organic demand.
+means, seasonal harmonics, relative price and the merchandising flags. Next week's
+price and promotion calendar are legitimate features, since retailers commit to
+them in advance. The model is fitted on $\log(1+q)$, as retail demand is
+multiplicative and right-skewed. Exponentiating a log-scale fit under-predicts,
+since the expectation of a convex transform exceeds the transform of the
+expectation; the uncorrected model showed a $-5.1\%$ bias, removed by a Duan
+smearing factor \cite{duan1983}. Accuracy is reported as weighted absolute
+percentage error, which unlike MAPE is not dominated by slow movers. A second,
+counterfactual forecast sets promotion flags to zero and price to reference; that
+baseline is what the pricing and markdown modules optimise around, so promotional
+inflation is not mistaken for organic demand.
 
 \subsection{Constrained price optimisation}
 \label{sec:pricing}
-Under constant-elasticity demand, differentiating $q(p)(p-c)$ gives the Lerner
+Differentiating $q(p)(p-c)$ under constant-elasticity demand gives the Lerner
 condition \cite{lerner1934},
 \begin{equation}
 p^{\star} = c\,\frac{\varepsilon}{1+\varepsilon},
@@ -352,18 +328,15 @@ p^{\star} = c\,\frac{\varepsilon}{1+\varepsilon},
 equivalently that the optimal gross margin is $1/|\varepsilon|$.
 
 For an inelastic product, $-1<\varepsilon<0$, the profit function has no turning
-point and the optimum is unbounded --- not a defect of the derivation but a
-statement that single-product profit is the wrong objective. Four guardrails are
-imposed: a cap on any single price move, a floor on discount depth, a minimum
-gross margin, and a band bounded by prices the chain already charges elsewhere,
-the last limiting drift toward supra-competitive pricing
-\cite{assad2024,fish2024}. The closed form is verified against a brute-force
-grid search.
+point and the optimum is unbounded --- not a defect of the derivation but a sign
+that single-product profit is the wrong objective. Four guardrails are imposed: a
+cap on any single price move, a floor on discount depth, a minimum gross margin,
+and a band bounded by prices the chain already charges elsewhere, the last
+limiting drift toward supra-competitive pricing \cite{assad2024,fish2024}.
 
 \subsection{Markdown scheduling}
-Clearance is a finite-horizon problem with fixed stock and a deadline, solved
-exactly by backward induction over states $(t,I)$ of week and remaining
-inventory,
+Clearance has fixed stock and a deadline, so it is solved exactly by backward
+induction over states $(t,I)$ of week and remaining inventory,
 \begin{equation}
 V_t(I)=\max_{d}\;
 \mathbb{E}\!\left[\,\min(D_d,I)\,p_d + V_{t+1}\!\left(I-\min(D_d,I)\right)\right],
@@ -371,56 +344,69 @@ V_t(I)=\max_{d}\;
 \end{equation}
 with terminal condition $V_T(I)=I\cdot v$ for salvage value $v$, and demand
 $D_d\sim\text{Poisson}(\mu_d)$ where $\mu_d$ combines the baseline forecast with
-the elasticity response to discount $d$.
-
-The objective is cash recovered, not margin: the stock is already bought, so its
-cost is sunk. Subtracting unit cost from each sale makes salvage look preferable
-to discounting whenever the discounted margin falls below salvage value, and the
-model then never marks down. Dynamic programming is preferred to reinforcement
-learning because the transition law is known --- backward induction then returns
-the exact optimum where reinforcement learning would only approximate it.
+the elasticity response to discount $d$. The objective is cash recovered, not
+margin: the stock is already bought, so its cost is sunk. Subtracting unit cost from each sale makes salvage look better than
+discounting whenever the discounted margin falls below salvage value, and the
+model then never marks down at all. Backward induction is preferred to
+reinforcement learning because the transition law is known, so it returns the
+exact optimum rather than an approximation.
 
 \subsection{Forecast-driven replenishment}
 The classical order-up-to level over lead time $L$ is
-$S=\mu(L+1)+z\sigma\sqrt{L+1}$, with $z$ from the newsvendor critical fractile.
-This assumes normal, stationary demand. Neither holds: demand is right-skewed,
-and next week's demand depends on next week's promotion, which is already known,
-so a static policy carries promotional safety stock all year. The proposed
-policy rebuilds the target each week from the forecast, sizing safety stock on
-\emph{forecast error} rather than total demand variability,
+$S=\mu(L+1)+z\sigma\sqrt{L+1}$, with $z$ from the newsvendor critical fractile. It
+assumes normal, stationary demand, and neither holds: demand is right-skewed, and
+next week's demand depends on next week's promotion, which is already known, so a
+static policy carries promotional safety stock all year. Ours rebuilds the target
+each week from the forecast, sizing safety stock on \emph{forecast error} rather
+than total demand variability,
 \begin{equation}
 S_t=\sum_{k=t}^{t+L}\hat q_k + z\,\hat\sigma^{\text{res}}_t\sqrt{L+1}.
 \label{eq:invpolicy}
 \end{equation}
-The residual spread $\hat\sigma^{\text{res}}_t$ is computed on an expanding
-window using only weeks already elapsed, since a buyer in the first week cannot
-know how accurate the forecast will later prove.
+The residual spread $\hat\sigma^{\text{res}}_t$ uses an expanding window over
+weeks already elapsed, since a buyer in the first week cannot know how accurate
+the forecast will later prove.
 
 \subsection{Validation design}
-A synthetic replica with identical schema assigns each product a known
-elasticity and each mechanic a known log-lift ($0.38$ mailer, $0.55$ display,
-$0.22$ temporary price reduction), with promotion assignment deliberately
-confounded with season and store tier so the problem is not made artificially
-easy. The pipeline runs unchanged on both.
+A synthetic replica with identical schema gives each product a known elasticity
+and each mechanic a known log-lift ($0.38$ mailer, $0.55$ display, $0.22$
+temporary price reduction), with promotion assignment deliberately confounded
+with season and store tier so the problem is not made artificially easy. The
+pipeline runs unchanged on both.
+
+%=============================================================================
+\subsection{Explanation and evidence grading}
+Two components sit after the decision modules. The first explains a
+recommendation: for the forecast we use SHAP values \cite{lundberg2017}, which
+approximate what a tree ensemble responds to, while for price no approximation is
+needed, since the Lerner condition is a closed form and can be reported as its own
+arithmetic --- elasticity used, assumed cost, unconstrained optimum, and the
+constraint that bound. The same pass records how often each guardrail binds and
+whether increases fall disproportionately on value-tier stores. The second grades
+evidence, labelling each result by what was actually observed:
+\textsc{measured} when prediction and outcome are both in the data,
+\textsc{replayed} when a policy is re-run against demand that really happened,
+\textsc{observational} when outcomes are real but treatment was not randomised,
+and \textsc{modelled} when the number depends on the estimated demand curve and
+was never charged. A modelled result is given as a range over the assumptions it
+rests on, never as a single figure.
 
 %=============================================================================
 \section{Results and Discussion}
 
 \subsection{Elasticity recovery}
-Fig.~\ref{fig:elast}(a) shows estimates against known values: naive least
-squares sits systematically below the diagonal, overstating price sensitivity,
-while the instrumented and shrunk estimator lies on it. Table~\ref{tab:elast}
-gives a naive bias of $-1.923$ and mean absolute error falling from $1.923$ to
-$0.089$, a factor of $21$.
+Fig.~\ref{fig:valid}(a) shows estimates against known values: naive least squares
+sits systematically below the diagonal, overstating price sensitivity, while the
+instrumented and shrunk estimator lies on it. Table~\ref{tab:elast} gives a naive
+bias of $-1.923$ and mean absolute error falling from $1.923$ to $0.089$, a factor
+of $21$, with correlation to truth rising from $0.995$ to $0.998$.
 
 On the real panel the instrument is strong: median first-stage $F$ of $5{,}703$,
-with $95\%$ of products above ten, and two-stage least squares accepted for 49
-of 55 products. Fig.~\ref{fig:elast}(b) shows impossible positive estimates
-falling from $5.5\%$ to $0\%$.
-
-The elasticities are coherent: branded frozen pizza is most elastic at $-4.44$,
-consistent with heavy promotion and stockpiling, and private-label pretzels
-least at $-0.11$. Neither pattern was imposed.
+$95\%$ of products above ten, and two-stage least squares accepted for 49 of 55
+products. Impossible positive estimates fall from $5.5\%$ to $0\%$
+(Fig.~\ref{fig:valid}(b)), and the estimates are coherent: branded frozen pizza is
+most elastic at $-4.44$ and private-label pretzels least at $-0.11$, neither
+pattern imposed.
 
 \begin{table}[!t]
 \caption{Elasticity estimator error against known ground truth (synthetic
@@ -441,118 +427,147 @@ Store FE + controls      & 0.998 & 0.089 & $+0.086$ \\
 
 \begin{figure*}[!t]
 \centering
-\includegraphics[width=\textwidth]{fig2_elasticity.pdf}
-\caption{Elasticity. (a) Estimated against true value on the synthetic
-replica. (b) Share of real-panel products with a positive, and therefore
-impossible, elasticity.}
-\label{fig:elast}
-\end{figure*}
-
-\begin{figure*}[!t]
-\centering
-\includegraphics[width=\textwidth]{fig3_uplift.pdf}
-\caption{Promotion uplift. (a) Difference-in-differences recovers the
-planted lift; the naive comparison is inflated two- to three-fold. (b) The same
-pattern on the real panel.}
-\label{fig:uplift}
+\includegraphics[width=\textwidth]{fig2_validation.pdf}
+\caption{Estimator validation. (a) Elasticity estimated against its true value
+on the synthetic replica. (b) Share of real-panel products with a positive, and
+therefore impossible, elasticity. (c) Promotion uplift against planted truth;
+the naive comparison is inflated two- to three-fold. (d) The same pattern on the
+real panel.}
+\label{fig:valid}
 \end{figure*}
 
 \subsection{Promotion uplift}
-Fig.~\ref{fig:uplift}(a) compares estimates against planted truth: mean absolute
-error across the three mechanics falls from $0.557$ to $0.010$, a factor of
-$57$. Placebo coefficients of $0.001$, $-0.005$ and $0.000$ support the
-parallel-trends assumption.
+Fig.~\ref{fig:valid}(c) compares estimates against planted truth: mean absolute
+error across the three mechanics falls from $0.557$ to $0.010$, a factor of $57$,
+and placebo coefficients of $0.001$, $-0.005$ and $0.000$ support parallel trends.
+On the real panel the naive comparison again roughly doubles every estimate: the
+corrected mailer lift is $0.572$ ($77.1\%$ in units) and the display lift $0.432$
+($54.1\%$), each with standard error below $0.005$, with placebo coefficients
+$-0.106$, $0.116$ and $-0.066$. The temporary-price-reduction coefficient is
+$-0.007$, practically zero --- a consistency check rather than a null result,
+since that mechanic is by definition a price cut with no other support.
 
-On the real panel the naive comparison again roughly doubles every estimate. The
-corrected mailer lift is $0.572$ ($77.1\%$ in units) and the display lift
-$0.432$ ($54.1\%$), each with standard error below $0.005$; placebo coefficients
-are $-0.106$, $0.116$ and $-0.066$.
-
-The temporary-price-reduction coefficient is $-0.007$, practically zero. This is
-a consistency check rather than a null result: that mechanic is by definition a
-price cut with no other support, so once price is controlled for nothing should
-remain, and the model recovers that independently.
-
-Combining causal lifts with estimated elasticities charges each promotion for
-the margin it gives away. Under the stated cost assumption the display mechanic
-is profitable for $60\%$ of products against a median break-even of $72\%$
-volume lift; the price-cut mechanic is profitable for $2\%$, needing $99\%$ lift
-while delivering $56\%$. Eight product--mechanic pairs priced below derived cost
-are consistent with deliberate loss leaders, whose basket effects an item-level
-model cannot see, and are flagged rather than called errors.
+Combining causal lifts with estimated elasticities charges each promotion for the
+margin it gives away. Under the stated cost assumption the display mechanic is
+profitable for $60\%$ of products against a median break-even of $72\%$ volume
+lift; the price-cut mechanic is profitable for $2\%$, needing $99\%$ lift while
+delivering $56\%$. Eight product--mechanic pairs priced below derived cost are
+flagged rather than called errors, being consistent with loss leaders whose
+basket effects an item-level model cannot see.
 
 \subsection{Forecast accuracy}
-Fig.~\ref{fig:fcst}(a) reports weighted absolute percentage error on the
-held-out weeks: $0.294$ against $0.423$ for the strongest naive baseline, an
-improvement of $30.5\%$. Reporting baselines matters, since an accuracy figure
-quoted without them cannot be judged.
-
-Residual bias after smearing is $+2.0\%$ against $-5.1\%$ uncorrected: the
+Fig.~\ref{fig:dec}(a) reports weighted absolute percentage error on the held-out
+weeks: $0.292$ against $0.424$ for the strongest naive baseline, an improvement of
+$31.0\%$. Residual bias after smearing is $+2.0\%$ against $-5.1\%$ uncorrected: the
 correction slightly worsens WAPE while substantially reducing bias, the right
 trade for a forecast feeding an inventory policy where under-prediction becomes
-under-ordering. Fig.~\ref{fig:fcst}(b) shows accuracy tracking volume, from
-$0.237$ for bag snacks at $18.6$ units per store-week to $0.405$ for oral
-hygiene at $4.7$. On promoted store-weeks the forecast is $1.90\times$ the
-counterfactual baseline, an independent cross-check on Section IV-B.
+under-ordering. Accuracy tracks volume, from $0.236$ for bag snacks at $18.6$
+units per store-week to $0.403$ for oral hygiene at $4.7$. On promoted store-weeks
+the forecast is $1.90\times$ the counterfactual baseline, an independent
+cross-check on the uplift estimates.
 
 \begin{figure*}[!t]
 \centering
-\includegraphics[width=\textwidth]{fig4_forecast.pdf}
-\caption{Forecasting on held-out weeks 131--156. (a) Model against three
-naive baselines. (b) Error by category.}
-\label{fig:fcst}
-\end{figure*}
-
-\begin{figure*}[!t]
-\centering
-\includegraphics[width=\textwidth]{fig5_markdown.pdf}
-\caption{Markdown. (a) Cash recovered and sell-through by policy.
-(b) Optimal ladder against the fixed schedule; depth eases as stock depletes.}
-\label{fig:md}
+\includegraphics[width=\textwidth]{fig3_decisions.pdf}
+\caption{Decision modules on held-out weeks 131--156. (a) Forecast against three
+naive baselines. (b) Forecast error by category. (c) Cash recovered and
+sell-through by clearance policy. (d) Mean optimal discount by clearance week
+across all 54 products, against the fixed ladder; depth eases as stock depletes
+and rises again only at the deadline.}
+\label{fig:dec}
 \end{figure*}
 
 \subsection{Pricing and sensitivity}
 The closed form agrees with a brute-force grid search to a maximum relative
 difference of $3\times10^{-5}$. Of 54 products, 46 are elastic enough for an
-interior optimum; for the other eight the guardrail sets the price. The
+interior optimum; for the other eight the guardrail sets the price, and the
 price-move cap binds for $85\%$ of products.
 
-Applying the recommendations over the test weeks yields an expected gross-profit
-increase of $11.7\%$, which must be reported with its caveat. Because unit cost
-is derived from an assumed margin and the Lerner condition targets
-$1/|\varepsilon|$, the recommendation partly reflects the gap between assumed
-margin (mean $28.7\%$) and implied target (mean $45.6\%$). Re-solving across a
-$\pm 5$ percentage-point band gives uplifts of $+175{,}477$, $+134{,}697$ and
-$+99{,}787$ profit units, with $87$--$98\%$ of products still indicated for
-increase. The direction is robust; the magnitude is not, so the honest result is
-a range.
+Valuing that recommendation needs care. Price varies within a product across the
+held-out weeks because of promotions, so applying an elasticity to a product's
+average price and total volume is not the same as applying it row by row; here
+the aggregated version understates the gain by about a third. The bias is in the
+arithmetic, not the model, so we value every store--week--product row separately
+against the $1{,}081{,}938$ profit units actually recorded.
+
+On that basis the recommendation returns $+227{,}003$ units, or $+21.0\%$, and it
+does so by selling \emph{less}: units fall $19.7\%$ while margin per unit rises
+enough to more than cover the loss, so this retailer was buying volume it was not
+profiting from. Because unit cost is assumed, the figure is reported across the
+assumptions it rests on: moving elasticity by $\pm 1$ standard error and the
+margin assumption by $\pm 5$ percentage points gives $+15.8\%$ to $+26.2\%$. The
+direction survives every perturbation, the magnitude does not, so the range is the
+result.
+
+\subsection{Does the modelled gain appear in the data?}
+The $21.0\%$ was never charged, so we tested it against the panel. The retailer
+ran no pricing experiment, but everyday prices for the same product differ across
+stores and weeks, and some of that variation lands near our recommendation.
+Store--weeks priced within $5\%$ of it were compared against those more than
+$15\%$ away, with store--product and week fixed effects absorbed, so a product is
+only ever compared with itself in a different week. Run on all held-out weeks this
+returns $+741\%$ at $t=129.5$ --- and it is meaningless. Our recommended price
+sits above the average shelf price, so ``far from the recommendation'' is close to
+a synonym for ``on clearance'': that group
+is $69.1\%$ promoted with $16.8\%$ of rows below cost, against $6.2\%$ in the near
+group. The comparison recovers the margin gap between full-price and clearance
+weeks, which is true by construction.
+
+Excluding promoted weeks removes the confound; both groups then hold no
+promotions and no below-cost rows. On the $64{,}485$ rows remaining the estimate is
+$+1.6\%$ per store--week (coefficient $0.0156$, standard error $0.0150$, $t=1.0$),
+whose $95\%$ interval runs from $-1.4\%$ to $+4.6\%$ and contains zero: the
+observational evidence neither confirms nor contradicts the modelled gain.
+
+Table~\ref{tab:ledger} gives that result with every other headline number and its
+grade. Both pricing rows are deliberately present: the first alone would overstate
+what has been established, the second alone would discard the design work, and the
+distance between them is what makes a pilot the next step.
+
+\begin{table}[!t]
+\caption{Every headline result with the evidence behind it}
+\label{tab:ledger}
+\centering
+\footnotesize
+\begin{tabular}{llc}
+\toprule
+Module & Result & Grade \\
+\midrule
+Forecast accuracy    & WAPE $0.292$              & \textsc{measured} \\
+Forecast bias        & $+2.0\%$ units            & \textsc{measured} \\
+Inventory cost       & $48.1\%$ lower            & \textsc{replayed} \\
+Inventory fill rate  & $97.9\% \to 99.1\%$       & \textsc{replayed} \\
+Markdown cash        & $+6.6\%$ vs fixed ladder  & \textsc{modelled} \\
+Pricing profit       & $+21.0\%$ ($+15.8$ to $+26.2$) & \textsc{modelled} \\
+Pricing, observed    & $+1.6\%$, $t=1.0$         & \textsc{observational} \\
+\bottomrule
+\end{tabular}
+\end{table}
 
 \subsection{Markdown and replenishment}
-Fig.~\ref{fig:md} compares clearance policies over an eight-week horizon with
-stock at fourteen weeks of baseline demand. The dynamic programme recovers
-$6.6\%$ more cash than the fixed $-20\%/-40\%$ ladder and $21.9\%$ more than
-never marking down, lifting sell-through from $57\%$ to $91\%$. Simulating the
-computed policy reproduces its predicted value to within $0.12\%$, confirming
-the recursion is solved correctly.
+Fig.~\ref{fig:dec}(c) compares clearance policies over an eight-week horizon with
+stock at fourteen weeks of baseline demand. The dynamic programme recovers $6.6\%$
+more cash than the fixed $-20\%/-40\%$ ladder and $21.9\%$ more than never marking
+down, lifting sell-through from $57\%$ to $91\%$; simulation reproduces its
+predicted value to within $0.12\%$.
 
-The optimal ladder in Fig.~\ref{fig:md}(b) \emph{reduces} depth in later weeks:
-as stock depletes the urgency to clear falls, so price can be recovered. A fixed
-schedule cannot express this because it never observes remaining inventory,
-which is why it underperforms. The correlation between elasticity and weeks
-discounted is $-0.68$: more elastic products earn their discounts back.
+The optimal ladder runs the opposite way to the textbook one. Averaged over all 54
+products, optimal depth \emph{eases} from $20.9\%$ in the first clearance week to
+$13.7\%$ in the seventh, rising to $17.8\%$ only in the final week when the
+deadline forces the issue (Fig.~\ref{fig:dec}(d)). As stock depletes the urgency to
+clear falls, so price can be recovered; a fixed schedule cannot express that, never
+observing remaining inventory.
 
 Table~\ref{tab:inv} reports replenishment cost over the held-out weeks across
 1{,}324 store--product series. The forecast-driven policy cuts total cost by
 $48.1\%$ against the textbook formula while reducing cover from $3.9$ to $2.8$
 weeks and raising fill rate from $97.9\%$ to $99.1\%$. Less stock with better
-service are usually opposing objectives; both improve because the forecast
-indicates \emph{when} cover is needed rather than carrying it continuously.
-
-The oracle row bounds what is attainable: perfect foresight would cut cost by
-$98.3\%$, so the policy captures $49\%$ of the available saving. That ceiling is
-more informative than the improvement alone. The saving concentrates where
-demand is hardest to predict, rising from $7.6$ per series in the lowest
-quartile of variability to $36.1$ in the highest.
+service are usually opposing aims; both improve because the forecast says
+\emph{when} cover is needed rather than carrying it all year. The oracle row
+bounds what is attainable: perfect foresight would cut cost by $98.3\%$, so the
+policy captures $49\%$ of the available saving, which concentrates where demand is
+hardest to predict --- $7.6$ per series in the lowest quartile of variability
+against $36.1$ in the highest.
 
 
 
@@ -574,41 +589,45 @@ Oracle (perfect foresight) &      747 &        0 &      747 & $100\%$ \\
 \end{table}
 
 \subsection{Limitations}
-Unit cost, lead time, holding cost, salvage value and starting inventory appear
-in no public retail panel and are stated assumptions; where a conclusion depends
-materially on one it is reported across a range. Estimates rest on observed
+Unit cost, lead time, holding cost, salvage value and starting inventory appear in
+no public retail panel and are stated assumptions; where a conclusion depends
+materially on one, it is reported across a range. Estimates rest on observed
 rather than randomised variation, so causal claims are conditional on the
 fixed-effects specification and are supported, not proved, by the placebo test.
 The profit model is item-level and cannot see basket or traffic effects, which is
 why below-cost promotions are flagged rather than judged. The replica validates
-estimator mechanics under a known process; it cannot show that process describes
-the real panel.
+estimator mechanics under a known process but cannot show that process describes
+the real panel, and the observational check has little power, since everyday price
+variation is small once promotions are removed.
 
 %=============================================================================
 \section{Conclusion}
 
 This work presents a retail decision system in which causal estimates of
-elasticity and promotion uplift feed pricing, markdown and replenishment
-modules, every decision being scored on held-out weeks against the heuristic it
-would replace. Correcting for price endogeneity removes all impossible
-elasticity estimates, and correcting for confounded promotion assignment reduces
-log-lift error by a factor of $57$ against known ground truth. The decision
-modules beat their incumbent baselines by $6.6\%$ in clearance cash recovery and
-$48.1\%$ in inventory cost, the latter capturing just under half of what perfect
-foresight could achieve.
+elasticity and promotion uplift feed pricing, markdown and replenishment modules,
+every decision scored on held-out weeks against the heuristic it would replace and
+every result published with its grade of evidence. Correcting for price
+endogeneity removes all impossible elasticity estimates, correcting for confounded
+promotion assignment reduces log-lift error by a factor of $57$ against known
+ground truth, and the decision modules beat their incumbent baselines by $6.6\%$
+in clearance cash recovery and $48.1\%$ in inventory cost.
 
-The recurring finding is that the correction matters more than the model class:
-in each module the largest gain came from removing a bias --- endogenous prices,
+The recurring finding is that the correction matters more than the model class: in
+each module the largest gain came from removing a bias --- endogenous prices,
 confounded promotions, retransformation under a log fit, sunk cost treated as
-marginal --- rather than from a more elaborate learner. Ongoing work adds
-per-recommendation attribution, closed-loop measurement of realised against
-predicted profit, and an interface for adjusting the stated assumptions.
+marginal, aggregation before an elasticity is applied --- rather than from a more
+elaborate learner. Evidence grading carries that discipline into the reporting: it
+turned a $+741\%$ pricing result into an inconclusive $+1.6\%$, and it is why this
+paper recommends a controlled pilot rather than claiming the $21.0\%$ has been
+shown. Repricing a random set of stores for one quarter would move the pricing row
+from \textsc{modelled} to \textsc{measured}, the only route by which the central
+claim can be established.
 
 %=============================================================================
 \begin{thebibliography}{00}
 
 \bibitem{friedman2001} J. H. Friedman, ``Greedy function approximation: A
-gradient boosting machine,'' \emph{Annals of Statistics}, vol. 29, no. 5,
+gradient boosting machine,'' \emph{Ann. Statist.}, vol. 29, no. 5,
 pp. 1189--1232, 2001.
 
 \bibitem{yang2025} Y. Yang, M. Wang, J. Wang \emph{et al.}, ``Multi-agent deep
@@ -632,15 +651,14 @@ Econometrics: An Empiricist's Companion}. Princeton, NJ: Princeton Univ.
 Press, 2009.
 
 \bibitem{bertrand2004} M. Bertrand, E. Duflo, and S. Mullainathan, ``How much
-should we trust differences-in-differences estimates?'' \emph{Quarterly Journal
-of Economics}, vol. 119, no. 1, pp. 249--275, 2004.
+should we trust differences-in-differences estimates?'' \emph{Quart. J. Econ.}, vol. 119, no. 1, pp. 249--275, 2004.
 
 \bibitem{lemmens2025} A. Lemmens, J. M. T. Roos, and S. Gabel,
 ``Personalization and targeting: How to experiment, learn and optimize,''
-\emph{International Journal of Research in Marketing}, 2025.
+\emph{Int. J. Res. Marketing}, 2025.
 
 \bibitem{lerner1934} A. P. Lerner, ``The concept of monopoly and the
-measurement of monopoly power,'' \emph{Review of Economic Studies}, vol. 1,
+measurement of monopoly power,'' \emph{Rev. Econ. Stud.}, vol. 1,
 no. 3, pp. 157--175, 1934.
 
 \bibitem{gallego1994} G. Gallego and G. van Ryzin, ``Optimal dynamic pricing of
@@ -650,12 +668,12 @@ Science}, vol. 40, no. 8, pp. 999--1020, 1994.
 \bibitem{gijsbrechts2022} J. Gijsbrechts, R. N. Boute, J. A. Van Mieghem, and
 D. J. Zhang, ``Can deep reinforcement learning improve inventory management?
 Performance on lost sales, dual-sourcing, and multi-echelon problems,''
-\emph{Manufacturing \& Service Operations Management}, vol. 24, no. 3,
+\emph{Manuf. Serv. Oper. Manage.}, vol. 24, no. 3,
 pp. 1349--1368, 2022.
 
 \bibitem{assad2024} S. Assad, R. Clark, D. Ershov, and L. Xu, ``Algorithmic
 pricing and competition: Empirical evidence from the German retail gasoline
-market,'' \emph{Journal of Political Economy}, vol. 132, no. 3,
+market,'' \emph{J. Polit. Econ.}, vol. 132, no. 3,
 pp. 723--771, 2024.
 
 \bibitem{fish2024} S. Fish, Y. A. Gonczarowski, and R. I. Shorrer,
@@ -663,16 +681,26 @@ pp. 723--771, 2024.
 
 \bibitem{debock2024} K. W. De Bock, K. Coussement, A. De Caigny \emph{et al.},
 ``Explainable AI for operational research: A defining framework, methods,
-applications, and a research agenda,'' \emph{European Journal of Operational
-Research}, vol. 314, no. 2, pp. 415--439, 2024.
+applications, and a research agenda,'' \emph{Eur. J. Oper. Res.}, vol. 314, no. 2, pp. 415--439, 2024.
+
+\bibitem{schultz2024} D. Schultz, J. Stephan, J. Sieber, T. Yeh, M. Kunz,
+P. Doupe, and T. Januschowski, ``Causal forecasting for pricing,''
+\emph{arXiv:2312.15282}, 2024.
+
+\bibitem{poinsot2025} A. Poinsot, P. Panayiotou, A. Leite, N. Chesneau,
+\"{O}. \c{S}im\c{s}ek, and M. Schoenauer, ``Position: Causal machine learning
+requires rigorous synthetic experiments for broader adoption,'' in
+\emph{Proc. ICML}, 2025.
+
+\bibitem{lundberg2017} S. M. Lundberg and S.-I. Lee, ``A unified approach to
+interpreting model predictions,'' in \emph{Adv. Neural Inf. Process. Syst.}, 2017, pp. 4765--4774.
 
 \bibitem{duan1983} N. Duan, ``Smearing estimate: A nonparametric
 retransformation method,'' \emph{J. Amer. Statist. Assoc.}, vol. 78, no. 383,
 pp. 605--610, 1983.
 
-\bibitem{dunnhumby} dunnhumby, ``Breakfast at the Frat: A time series
-analysis,'' dunnhumby Source Files. [Online]. Available:
-\url{https://www.dunnhumby.com/source-files/}
+\bibitem{dunnhumby} dunnhumby, ``Breakfast at the Frat,'' dunnhumby Source
+Files. [Online]. Available: \url{https://www.dunnhumby.com/source-files/}
 
 \end{thebibliography}
 
@@ -683,13 +711,19 @@ analysis,'' dunnhumby Source Files. [Online]. Available:
 %=============================================================================
 \ifincludecode
 
+\clearpage
 \onecolumn
 \appendices
 \section*{APPENDIX --- SIMULATION CODE}
 
-The complete implementation is listed below, with modules in execution order.
-Each listing is read directly from the source file used to produce the results
-in this paper, so the code shown is the code that was run.
+\noindent\rule{\textwidth}{0.8pt}\vspace{1mm}
+
+\noindent The six-page paper ends with the references on the previous page.
+Everything from here on is the implementation, listed in execution order. Each
+listing is read directly from the source file that produced the results reported
+above, so the code shown is the code that was run.
+
+\vspace{1mm}\noindent\rule{\textwidth}{0.8pt}
 
 \subsection*{A. Configuration and schema contract}
 \codefile{src/config.py}{config.py}
@@ -719,8 +753,18 @@ in this paper, so the code shown is the code that was run.
 \subsection*{I. Inventory replenishment}
 \codefile{src/inventory.py}{inventory.py}
 
-\subsection*{J. Figure generation}
+\subsection*{J. Explanation and audit}
+\codefile{src/explain.py}{explain.py}
+
+\subsection*{K. Evidence-graded measurement}
+\codefile{src/measure.py}{measure.py}
+
+\subsection*{L. Interactive dashboard}
+\codefile{app.py}{app.py}
+
+\subsection*{M. Figure generation}
 \codefile{src/make\_figures.py}{make_figures.py}
+\codefile{src/merged\_figures.py}{merged_figures.py}
 
 \fi
 
